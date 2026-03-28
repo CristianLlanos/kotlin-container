@@ -48,6 +48,20 @@ container.factory<PaymentGateway> { StripeGateway() }
 container.singleton<NotificationService> { SlackNotificationService() }
 ```
 
+Inside registration lambdas, `resolve<T>()` is available to reference other bindings — useful when one binding depends on another or when the same implementation backs multiple interfaces:
+
+```kotlin
+class EventServiceProvider : ServiceProvider {
+    override fun register(container: Container) {
+        container.singleton<EventBus> { EventBus(this) }
+        container.singleton<Emitter> { resolve<EventBus>() }
+        container.singleton<Subscriber> { resolve<EventBus>() }
+    }
+}
+```
+
+`this` refers to the container itself, so you can pass it directly to classes that need it. `resolve<T>()` pulls from the container's registry, letting you wire shared instances across multiple interface bindings.
+
 ## Service providers
 
 Group related registrations into providers for modularity:
@@ -61,6 +75,7 @@ class AuthServiceProvider : ServiceProvider {
 
 val container = Container()
 container.register(AuthServiceProvider())
+```
 
 ## Calling functions
 
