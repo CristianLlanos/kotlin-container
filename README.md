@@ -25,38 +25,7 @@ dependencies {
 
 ## Quick start
 
-```kotlin
-val container = Container()
-
-// Register a new instance every time
-container.factory<PaymentGateway> { StripeGateway() }
-
-// Register a shared instance (created once, reused)
-container.singleton<UserService> { UserService(resolve(), resolve()) }
-
-// Resolve
-val service = container.resolve<UserService>()
-```
-
-## Service providers
-
-Group related registrations into providers for modularity:
-
-```kotlin
-class AuthServiceProvider : ServiceProvider {
-    override fun register(container: Container) {
-        container.singleton<TokenService> { TokenService() }
-        container.singleton<AuthService> { AuthService(resolve()) }
-    }
-}
-
-val container = Container()
-container.register(AuthServiceProvider())
-```
-
-## Auto-resolution
-
-Classes with a primary constructor are resolved automatically — no registration needed:
+Concrete classes are resolved automatically — no registration needed:
 
 ```kotlin
 class Logger
@@ -67,12 +36,42 @@ val container = Container()
 val service = container.resolve<UserService>() // resolves the entire dependency tree
 ```
 
+The container inspects primary constructors and recursively resolves each parameter.
+
 Auto-resolution handles:
 
 - **Concrete classes** — resolved recursively via their primary constructor
 - **Registered interfaces/abstracts** — resolved from the registry
 - **Optional parameters with defaults** — skipped when unresolvable
 - **Required primitives (String, Int, etc.)** — throws `UnresolvableDependencyException`
+
+## Manual registration
+
+Use `factory` or `singleton` when you need explicit control — typically for binding interfaces to implementations:
+
+```kotlin
+val container = Container()
+
+// Bind an interface to a concrete class (new instance every time)
+container.factory<PaymentGateway> { StripeGateway() }
+
+// Bind as a shared instance (created once, reused)
+container.singleton<NotificationService> { SlackNotificationService() }
+```
+
+## Service providers
+
+Group related registrations into providers for modularity:
+
+```kotlin
+class AuthServiceProvider : ServiceProvider {
+    override fun register(container: Container) {
+        container.singleton<TokenStore> { RedisTokenStore() }
+    }
+}
+
+val container = Container()
+container.register(AuthServiceProvider())
 
 ## Calling functions
 
