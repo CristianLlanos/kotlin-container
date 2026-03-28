@@ -4,20 +4,9 @@ A lightweight dependency injection container for Kotlin. Zero config, type-safe,
 
 ## Installation
 
-Add the GitHub Packages repository and dependency to your `build.gradle.kts`:
+Add the dependency to your `build.gradle.kts`:
 
 ```kotlin
-repositories {
-    mavenCentral()
-    maven {
-        url = uri("https://maven.pkg.github.com/CristianLlanos/kotlin-container")
-        credentials {
-            username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_USERNAME")
-            password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
-        }
-    }
-}
-
 dependencies {
     implementation("com.cristianllanos:container:0.1.0")
 }
