@@ -1,6 +1,9 @@
 package com.cristianllanos.container
 
 import kotlin.reflect.KCallable
+import kotlin.reflect.KParameter
+import kotlin.reflect.full.declaredMemberFunctions
+import kotlin.reflect.jvm.jvmErasure
 
 internal class Dependencies private constructor(
     private val parent: Dependencies?,
@@ -8,8 +11,11 @@ internal class Dependencies private constructor(
 ) : Scope {
 
     companion object {
-        fun make(autoResolver: AutoResolver): Container =
-            Dependencies(parent = null, autoResolver = autoResolver)
+        fun make(autoResolver: AutoResolver): Container {
+            val container = Dependencies(parent = null, autoResolver = autoResolver)
+            container.singleton(Container::class.java) { this }
+            return container
+        }
     }
 
     private val bindings = mutableMapOf<Class<*>, Binding<*>>()
@@ -22,8 +28,23 @@ internal class Dependencies private constructor(
 
     private class ScopedEntry(val instance: Any, val binding: Binding.Scoped<*>)
 
-    override fun register(vararg providers: ServiceProvider): Registrar {
-        providers.forEach { it.register(this) }
+    override fun register(vararg providers: Any): Registrar {
+        providers.forEach { provider ->
+            val method = provider::class.declaredMemberFunctions
+                .singleOrNull { it.name == "register" }
+                ?: throw IllegalArgumentException(
+                    "Provider [${provider::class.simpleName}] must have exactly one register() method"
+                )
+
+            val args = mutableMapOf<KParameter, Any?>()
+            for (param in method.parameters) {
+                when (param.kind) {
+                    KParameter.Kind.INSTANCE -> args[param] = provider
+                    else -> args[param] = resolve(param.type.jvmErasure.java)
+                }
+            }
+            method.callBy(args)
+        }
         return this
     }
 

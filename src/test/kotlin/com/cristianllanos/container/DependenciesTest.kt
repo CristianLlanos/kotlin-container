@@ -37,15 +37,18 @@ class DependenciesTest {
     }
 
     @Test
-    fun `register delegates to service provider`() {
+    fun `register delegates to provider with auto-resolved params`() {
         val container = Container()
-        val provider = object : ServiceProvider {
-            override fun register(container: Container) {
-                container.singleton<String> { "hello" }
+        container.singleton<String> { "hello" }
+
+        class MyProvider {
+            fun register(container: Container, greeting: String) {
+                container.singleton<Int> { greeting.length }
             }
         }
-        container.register(provider)
-        assertEquals("hello", container.resolve<String>())
+
+        container.register(MyProvider())
+        assertEquals(5, container.resolve<Int>())
     }
 
     @Test

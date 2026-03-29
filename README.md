@@ -48,11 +48,22 @@ container.factory<PaymentGateway> { StripeGateway() }
 container.singleton<NotificationService> { SlackNotificationService() }
 ```
 
+For concrete classes that just need auto-resolution with a specific lifetime, skip the lambda entirely:
+
+```kotlin
+container.singleton<TenantService>()
+container.singleton<CalendarService>()
+container.scoped<RequestContext>()
+container.factory<TempProcessor>()
+```
+
+This is equivalent to `container.singleton<TenantService> { resolve() }` — the container auto-resolves the constructor dependencies.
+
 Inside registration lambdas, `resolve<T>()` is available to reference other bindings — useful when one binding depends on another or when the same implementation backs multiple interfaces:
 
 ```kotlin
-class EventServiceProvider : ServiceProvider {
-    override fun register(container: Container) {
+class EventServiceProvider {
+    fun register(container: Container) {
         container.singleton<EventBus> { EventBus(this) }
         container.singleton<Emitter> { resolve<EventBus>() }
         container.singleton<Subscriber> { resolve<EventBus>() }
@@ -64,17 +75,30 @@ class EventServiceProvider : ServiceProvider {
 
 ## Service providers
 
-Group related registrations into providers for modularity:
+Group related registrations into providers. Any class with a `register()` method works — its parameters are auto-resolved from the container:
 
 ```kotlin
-class AuthServiceProvider : ServiceProvider {
-    override fun register(container: Container) {
+class AuthServiceProvider {
+    fun register(container: Container) {
         container.singleton<TokenStore> { RedisTokenStore() }
     }
 }
 
 val container = Container()
 container.register(AuthServiceProvider())
+```
+
+Providers can ask for any dependency, not just the container:
+
+```kotlin
+class OrderEventProvider {
+    fun register(subscriber: Subscriber) {
+        subscriber.subscribe<OrderPlaced>(
+            InventoryListener::class,
+            NotificationListener::class,
+        )
+    }
+}
 ```
 
 ## Calling functions
@@ -185,8 +209,8 @@ container.scope { scope ->
 Use service providers to set up different scope contexts. The scope's purpose is defined by what you register on it — no named scopes needed:
 
 ```kotlin
-class RequestScopeProvider(private val request: HttpRequest) : ServiceProvider {
-    override fun register(container: Container) {
+class RequestScopeProvider(private val request: HttpRequest) {
+    fun register(container: Container) {
         container.singleton<RequestId> { RequestId(request.id) }
         container.singleton<CurrentUser> { CurrentUser(request.userId) }
         container.scoped<DbTransaction> { DbTransaction(resolve<DataSource>()) }
@@ -194,8 +218,8 @@ class RequestScopeProvider(private val request: HttpRequest) : ServiceProvider {
     }
 }
 
-class JobScopeProvider(private val job: Job) : ServiceProvider {
-    override fun register(container: Container) {
+class JobScopeProvider(private val job: Job) {
+    fun register(container: Container) {
         container.singleton<JobContext> { JobContext(job) }
     }
 }

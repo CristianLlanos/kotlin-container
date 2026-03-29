@@ -4,11 +4,10 @@
 
 ```bash
 publish-maven --dry-run    # test locally (~/.m2)
-publish-maven              # publish to Maven Central
+publish-maven              # publish to Maven Central (manual release via sonatype)
+publish-maven --release    # publish and release automatically
 ```
 
 Coordinates: `com.cristianllanos:container:<version>`
 
-Version is set in `build.gradle.kts`. Bump it before publishing a new release.
-
-After publishing, check status at https://central.sonatype.com
+Version is set in `build.gradle.kts`. Bump it and update the README installation snippet before publishing a new release.
