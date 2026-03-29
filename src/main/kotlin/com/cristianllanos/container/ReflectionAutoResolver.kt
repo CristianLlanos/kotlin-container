@@ -3,6 +3,10 @@ package com.cristianllanos.container
 import kotlin.reflect.KClass
 import kotlin.reflect.full.primaryConstructor
 
+/**
+ * Default [AutoResolver] that uses Kotlin reflection to construct concrete classes
+ * by recursively resolving their primary constructor parameters.
+ */
 class ReflectionAutoResolver : AutoResolver {
 
     @Suppress("UNCHECKED_CAST")

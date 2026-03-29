@@ -8,7 +8,7 @@ Add the dependency to your `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.cristianllanos:container:0.3.0")
+    implementation("com.cristianllanos:container:0.3.1")
 }
 ```
 
