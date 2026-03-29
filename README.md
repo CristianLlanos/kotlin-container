@@ -96,6 +96,155 @@ val controller = OrderController()
 container.call(controller::processOrder)
 ```
 
+## Scopes
+
+Scoped bindings create one instance per scope — a singleton within a lifecycle boundary. Useful when a dependency must be shared within a context (like an HTTP request) but isolated between contexts.
+
+Three lifetimes:
+
+| Lifetime | Behavior |
+|---|---|
+| `factory` | New instance every `resolve()` call |
+| `singleton` | One instance forever (global) |
+| `scoped` | One instance per scope |
+
+Register scoped bindings on the container:
+
+```kotlin
+val container = Container()
+container.scoped<DbConnection> { DbConnection(resolve<Config>()) }
+```
+
+Scoped bindings can only be resolved within a scope — resolving from the root throws `ScopeRequiredException`:
+
+```kotlin
+container.resolve<DbConnection>() // throws ScopeRequiredException
+
+val scope = container.child()
+scope.resolve<DbConnection>()     // works — creates instance
+scope.resolve<DbConnection>()     // same instance
+scope.close()                      // instance disposed
+```
+
+Use the block-based syntax for automatic cleanup:
+
+```kotlin
+container.scope { scope ->
+    val db = scope.resolve<DbConnection>()
+    // use db...
+}  // scope auto-closes here
+```
+
+### Dispose hooks
+
+Attach `onClose` to run cleanup when the scope closes:
+
+```kotlin
+container.scoped<DbConnection> { DbConnection() }
+    .onClose { it.disconnect() }
+```
+
+Instances implementing `AutoCloseable` are closed automatically — no hook needed:
+
+```kotlin
+container.scoped<InputStream> { FileInputStream("data.bin") }
+// .close() called automatically when scope closes
+```
+
+If both `onClose` and `AutoCloseable` apply, only the explicit `onClose` runs.
+
+### Nested scopes
+
+Scopes can be nested. Each scope gets its own scoped instances, and closing a parent cascades to children (deepest first):
+
+```kotlin
+container.scope { outer ->
+    val outerDb = outer.resolve<DbConnection>()
+
+    outer.scope { inner ->
+        val innerDb = inner.resolve<DbConnection>()  // different instance
+        // inner closes first
+    }
+    // outer closes after
+}
+```
+
+### Scopes as child containers
+
+A scope is a full `Container` — you can register ad-hoc bindings on it:
+
+```kotlin
+container.scope { scope ->
+    scope.singleton<RequestId> { RequestId.generate() }
+    scope.resolve<RequestHandler>()  // can depend on RequestId
+}
+```
+
+### Contextual scopes with service providers
+
+Use service providers to set up different scope contexts. The scope's purpose is defined by what you register on it — no named scopes needed:
+
+```kotlin
+class RequestScopeProvider(private val request: HttpRequest) : ServiceProvider {
+    override fun register(container: Container) {
+        container.singleton<RequestId> { RequestId(request.id) }
+        container.singleton<CurrentUser> { CurrentUser(request.userId) }
+        container.scoped<DbTransaction> { DbTransaction(resolve<DataSource>()) }
+            .onClose { it.rollbackIfOpen() }
+    }
+}
+
+class JobScopeProvider(private val job: Job) : ServiceProvider {
+    override fun register(container: Container) {
+        container.singleton<JobContext> { JobContext(job) }
+    }
+}
+```
+
+Then create the right scope for each context:
+
+```kotlin
+// HTTP request
+fun handleRequest(container: Container, request: HttpRequest) {
+    container.scope { scope ->
+        scope.register(RequestScopeProvider(request))
+        scope.resolve<RequestHandler>().handle()
+    }
+}
+
+// Background job
+fun processJob(container: Container, job: Job) {
+    container.scope { scope ->
+        scope.register(JobScopeProvider(job))
+        scope.resolve<JobProcessor>().run()
+    }
+}
+```
+
+### Android
+
+In Android, the system controls Activity and Fragment lifecycles — you can't wrap them in a `scope { }` block. Instead, tie scopes to lifecycle callbacks:
+
+```kotlin
+class MyActivity : AppCompatActivity() {
+    private lateinit var scope: Scope
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        scope = appContainer.child()
+        scope.register(ActivityScopeProvider(this))
+
+        val presenter = scope.resolve<Presenter>()
+    }
+
+    override fun onDestroy() {
+        scope.close()
+        super.onDestroy()
+    }
+}
+```
+
+A dedicated Android integration package with automatic lifecycle management is planned for the future.
+
 ## Custom auto-resolver
 
 Replace the default reflection-based auto-resolution with your own strategy:
@@ -117,10 +266,11 @@ The default `ReflectionAutoResolver` is used when no custom resolver is provided
 The container is split into focused interfaces. Use them to restrict what each part of your code can do:
 
 ```kotlin
-interface Registrar   // register(), factory(), singleton()
+interface Registrar   // register(), factory(), singleton(), scoped()
 interface Resolver    // resolve()
 interface Caller      // call()
-interface Container : Registrar, Resolver, Caller
+interface Container : Registrar, Resolver, Caller  // child()
+interface Scope : Container, AutoCloseable          // close()
 ```
 
 For example, give application code only what it needs:
