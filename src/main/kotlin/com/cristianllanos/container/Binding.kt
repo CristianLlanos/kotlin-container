@@ -7,6 +7,12 @@ internal sealed class Binding<T : Any> {
     class Singleton<T : Any>(override val factory: Container.() -> T) : Binding<T>()
     class Scoped<T : Any>(
         override val factory: Container.() -> T,
-        var onClose: ((T) -> Unit)? = null,
-    ) : Binding<T>()
+        onClose: ((T) -> Unit)? = null,
+    ) : Binding<T>() {
+        var onClose: ((T) -> Unit)? = onClose
+            set(value) {
+                check(field == null) { "onClose hook has already been set" }
+                field = value
+            }
+    }
 }

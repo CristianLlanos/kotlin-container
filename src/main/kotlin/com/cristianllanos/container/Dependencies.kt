@@ -3,7 +3,6 @@ package com.cristianllanos.container
 import kotlin.reflect.KCallable
 import kotlin.reflect.KParameter
 import kotlin.reflect.full.declaredMemberFunctions
-import kotlin.reflect.jvm.jvmErasure
 
 internal class Dependencies private constructor(
     private val parent: Dependencies?,
@@ -37,13 +36,9 @@ internal class Dependencies private constructor(
                     "Provider [${provider::class.simpleName}] must have exactly one register() method"
                 )
 
-            val args = mutableMapOf<KParameter, Any?>()
-            for (param in method.parameters) {
-                when (param.kind) {
-                    KParameter.Kind.INSTANCE -> args[param] = provider
-                    else -> args[param] = resolve(param.type.jvmErasure.java)
-                }
-            }
+            val args = resolveParameters(method.parameters, provider::class.simpleName ?: "provider", this)
+                .toMutableMap()
+            method.parameters.find { it.kind == KParameter.Kind.INSTANCE }?.let { args[it] = provider }
             method.callBy(args)
         }
         return this
@@ -92,8 +87,7 @@ internal class Dependencies private constructor(
         is Binding.Singleton -> {
             if (bindings[type] === binding) {
                 singletons[type] as? T ?: run {
-                    // Temporarily hide the binding so the factory's resolve<T>() call
-                    // falls through to the auto-resolver instead of re-entering this factory.
+                    // Prevent infinite recursion when a singleton factory calls resolve<T>() for its own type.
                     bindings.remove(type)
                     resolving.remove(type)
                     try {

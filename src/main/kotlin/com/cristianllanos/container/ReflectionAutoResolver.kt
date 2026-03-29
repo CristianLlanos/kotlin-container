@@ -17,31 +17,26 @@ class ReflectionAutoResolver : AutoResolver {
     }
 
     private fun autoResolve(klass: KClass<*>, resolver: Resolver): Any {
-        if (!isResolvableClass(klass)) {
-            throw UnresolvableDependencyException("Unable to resolve dependency [${klass.simpleName}]")
-        }
+        val constructor = resolvableConstructor(klass)
+            ?: throw UnresolvableDependencyException("Unable to resolve dependency [${klass.simpleName}]")
+
         check(resolving.add(klass.java)) {
             "Circular auto-resolution detected for [${klass.simpleName}]. Chain: ${resolving.map { it.simpleName }}"
         }
 
-        val constructor = klass.primaryConstructor
-            ?: throw UnresolvableDependencyException(
-                "Unable to resolve dependency [${klass.simpleName}]: no primary constructor"
-            )
-
         try {
             val args = resolveParameters(constructor.parameters, klass.simpleName ?: "unknown", resolver)
-            return constructor.callBy(args)
+            return constructor.callBy(args)!!
         } finally {
             resolving.remove(klass.java)
         }
     }
 
-    private fun isResolvableClass(klass: KClass<*>): Boolean {
-        if (klass.java.isPrimitive) return false
-        if (klass == String::class) return false
-        if (klass.java.isInterface) return false
-        if (java.lang.reflect.Modifier.isAbstract(klass.java.modifiers)) return false
-        return klass.primaryConstructor != null
+    private fun resolvableConstructor(klass: KClass<*>): kotlin.reflect.KFunction<*>? {
+        if (klass.java.isPrimitive) return null
+        if (klass == String::class) return null
+        if (klass.java.isInterface) return null
+        if (java.lang.reflect.Modifier.isAbstract(klass.java.modifiers)) return null
+        return klass.primaryConstructor
     }
 }
