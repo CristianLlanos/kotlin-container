@@ -2,7 +2,7 @@
 
 Lightweight dependency injection container for Kotlin.
 
-**Maven coordinates:** `com.cristianllanos:container:0.3.1`
+**Maven coordinates:** `com.cristianllanos:container:0.4.0`
 
 ## Core concepts
 
