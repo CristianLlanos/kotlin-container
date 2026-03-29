@@ -29,8 +29,8 @@ mavenPublishing {
 
     pom {
         name.set("Kotlin Container")
-        description.set("A lightweight dependency injection container for Kotlin")
-        url.set("https://github.com/CristianLlanos/kotlin-container")
+        description.set("A lightweight, thread-safe dependency injection container for Kotlin. Constructor auto-resolution, scoped lifecycles, service providers — no code generation, no annotations, zero configuration.")
+        url.set("https://cristianllanos.com/projects/kotlin-container/")
 
         licenses {
             license {

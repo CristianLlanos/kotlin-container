@@ -1,6 +1,6 @@
 # Module container
 
-A lightweight dependency injection container for Kotlin with zero config, type-safe, reflection-based auto-resolution.
+A lightweight dependency injection container for Kotlin. Constructor auto-resolution, scoped lifecycles, service providers, and thread safety — no code generation, no annotations, zero configuration.
 
 # Package com.cristianllanos.container
 
