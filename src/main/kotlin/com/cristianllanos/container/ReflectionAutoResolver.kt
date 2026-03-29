@@ -5,9 +5,11 @@ import kotlin.reflect.full.primaryConstructor
 
 /**
  * Default [AutoResolver] that uses Kotlin reflection to construct concrete classes
- * by recursively resolving their primary constructor parameters.
+ * by resolving their primary constructor parameters.
  */
 class ReflectionAutoResolver : AutoResolver {
+
+    private val resolving = mutableSetOf<Class<*>>()
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : Any> resolve(type: Class<T>, resolver: Resolver): T {
@@ -18,12 +20,21 @@ class ReflectionAutoResolver : AutoResolver {
         if (!isResolvableClass(klass)) {
             throw UnresolvableDependencyException("Unable to resolve dependency [${klass.simpleName}]")
         }
+        check(resolving.add(klass.java)) {
+            "Circular auto-resolution detected for [${klass.simpleName}]. Chain: ${resolving.map { it.simpleName }}"
+        }
 
         val constructor = klass.primaryConstructor
-            ?: throw UnresolvableDependencyException("Unable to resolve dependency [${klass.simpleName}]: no primary constructor")
+            ?: throw UnresolvableDependencyException(
+                "Unable to resolve dependency [${klass.simpleName}]: no primary constructor"
+            )
 
-        val args = resolveParameters(constructor.parameters, klass.simpleName ?: "unknown", resolver)
-        return constructor.callBy(args)
+        try {
+            val args = resolveParameters(constructor.parameters, klass.simpleName ?: "unknown", resolver)
+            return constructor.callBy(args)
+        } finally {
+            resolving.remove(klass.java)
+        }
     }
 
     private fun isResolvableClass(klass: KClass<*>): Boolean {

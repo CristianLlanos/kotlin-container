@@ -20,6 +20,7 @@ internal class Dependencies private constructor(
 
     private val bindings = mutableMapOf<Class<*>, Binding<*>>()
     private val singletons = mutableMapOf<Class<*>, Any>()
+    private val resolving = mutableSetOf<Class<*>>()
     private val scopedInstances = mutableMapOf<Class<*>, ScopedEntry>()
     private val children = mutableSetOf<Dependencies>()
     private var closed = false
@@ -68,12 +69,21 @@ internal class Dependencies private constructor(
     override fun <T : Any> resolve(type: Class<T>): T {
         if (!isRoot) check(!closed) { "Cannot resolve from a closed scope" }
 
-        val local = bindings[type]
-        if (local != null) return resolveBinding(local, type)
+        singletons[type]?.let { return it as T }
 
-        parent?.findBinding(type)?.let { return resolveBinding(it, type) }
+        check(resolving.add(type)) {
+            "Circular dependency detected while resolving [${type.simpleName}]. Resolution chain: ${resolving.map { it.simpleName }}"
+        }
+        try {
+            val local = bindings[type]
+            if (local != null) return resolveBinding(local, type)
 
-        return autoResolver.resolve(type, this)
+            parent?.findBinding(type)?.let { return resolveBinding(it, type) }
+
+            return autoResolver.resolve(type, this)
+        } finally {
+            resolving.remove(type)
+        }
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -81,7 +91,19 @@ internal class Dependencies private constructor(
         is Binding.Factory -> binding.factory(this) as T
         is Binding.Singleton -> {
             if (bindings[type] === binding) {
-                singletons.getOrPut(type) { binding.factory(this) } as T
+                singletons[type] as? T ?: run {
+                    // Temporarily hide the binding so the factory's resolve<T>() call
+                    // falls through to the auto-resolver instead of re-entering this factory.
+                    bindings.remove(type)
+                    resolving.remove(type)
+                    try {
+                        val instance = binding.factory(this)
+                        singletons[type] = instance
+                        instance as T
+                    } finally {
+                        bindings[type] = binding
+                    }
+                }
             } else {
                 parent!!.resolve(type)
             }

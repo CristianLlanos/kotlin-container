@@ -77,4 +77,11 @@ class AutoResolveTest {
 
         assertIs<ResolvableComplexDependency>(container.resolve<ResolvableComplexDependency>())
     }
+
+    @Test
+    fun `resolves deep auto-resolution chain iteratively`() {
+        val container = Container()
+        val result = container.resolve<Level0>()
+        assertNotNull(result.dep.dep.dep.dep.service)
+    }
 }
