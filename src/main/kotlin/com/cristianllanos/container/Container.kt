@@ -3,6 +3,9 @@ package com.cristianllanos.container
 /**
  * Central dependency injection container that combines registration, resolution, and callable invocation.
  *
+ * Implementations are thread-safe: [resolve] may be called concurrently from multiple threads.
+ * Registration should happen during a single-threaded setup phase.
+ *
  * ```kotlin
  * val container = Container()
  * container.singleton<Logger> { ConsoleLogger() }
@@ -21,3 +24,18 @@ interface Container : Registrar, Resolver, Caller {
  */
 fun Container(autoResolver: AutoResolver = ReflectionAutoResolver()): Container =
     Dependencies.make(autoResolver)
+
+/**
+ * Creates a new [Container] and configures it with [init].
+ *
+ * ```kotlin
+ * val container = Container {
+ *     singleton<Logger> { ConsoleLogger() }
+ *     factory<PaymentGateway> { StripeGateway() }
+ * }
+ * ```
+ */
+fun Container(
+    autoResolver: AutoResolver = ReflectionAutoResolver(),
+    init: Container.() -> Unit,
+): Container = Container(autoResolver).apply(init)

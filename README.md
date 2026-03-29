@@ -25,6 +25,15 @@ val container = Container()
 val service = container.resolve<UserService>() // resolves the entire dependency tree
 ```
 
+Or use the DSL builder for setup-in-one-shot:
+
+```kotlin
+val container = Container {
+    singleton<NotificationService> { SlackNotificationService() }
+    factory<PaymentGateway> { StripeGateway() }
+}
+```
+
 The container inspects primary constructors and recursively resolves each parameter.
 
 Auto-resolution handles:
@@ -269,6 +278,17 @@ class MyActivity : AppCompatActivity() {
 
 A dedicated Android integration package with automatic lifecycle management is planned for the future.
 
+## Thread safety
+
+The container is safe for concurrent resolution from multiple threads. Guarantees:
+
+- **Singletons** are created exactly once. If multiple threads resolve the same singleton concurrently, one thread executes the factory while the others wait.
+- **Scoped instances** are created once per scope, even under contention.
+- **Factories** execute independently on each thread with no shared mutable state.
+- **Circular dependency detection** is per-thread and does not produce false positives under concurrency.
+
+Registration (`factory`, `singleton`, `scoped`, `register`) should happen during a single-threaded setup phase before concurrent resolution begins. The typical pattern is: bootstrap the container on startup, then share it across threads for resolution only.
+
 ## Custom auto-resolver
 
 Replace the default reflection-based auto-resolution with your own strategy:
@@ -284,6 +304,37 @@ val container = Container(MyAutoResolver())
 ```
 
 The default `ReflectionAutoResolver` is used when no custom resolver is provided.
+
+## Convenience extensions
+
+### Optional resolution
+
+```kotlin
+val logger = container.resolveOrNull<Logger>()   // returns null if unresolvable
+val hasLogger = container.has<Logger>()           // true if resolvable
+```
+
+Note: both `resolveOrNull` and `has` trigger a full resolution — singleton and factory instances will be created as a side effect on success.
+
+### Lazy resolution
+
+Defer resolution until first access:
+
+```kotlin
+val logger by container.lazy<Logger>()  // resolves on first use
+```
+
+When used with a `Scope`, do not store the `Lazy` beyond that scope's lifetime.
+
+### Scopes with providers
+
+Register providers and execute in one call:
+
+```kotlin
+container.scope(RequestScopeProvider(request)) { scope ->
+    scope.resolve<RequestHandler>().handle()
+}
+```
 
 ## Interface segregation
 

@@ -9,10 +9,12 @@ internal sealed class Binding<T : Any> {
         override val factory: Container.() -> T,
         onClose: ((T) -> Unit)? = null,
     ) : Binding<T>() {
-        var onClose: ((T) -> Unit)? = onClose
+        @Volatile var onClose: ((T) -> Unit)? = onClose
             set(value) {
-                check(field == null) { "onClose hook has already been set" }
-                field = value
+                synchronized(this) {
+                    check(field == null) { "onClose hook has already been set" }
+                    field = value
+                }
             }
     }
 }

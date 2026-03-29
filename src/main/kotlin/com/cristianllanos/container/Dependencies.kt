@@ -1,5 +1,6 @@
 package com.cristianllanos.container
 
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KCallable
 import kotlin.reflect.KParameter
 import kotlin.reflect.full.declaredMemberFunctions
@@ -17,12 +18,13 @@ internal class Dependencies private constructor(
         }
     }
 
-    private val bindings = mutableMapOf<Class<*>, Binding<*>>()
-    private val singletons = mutableMapOf<Class<*>, Any>()
-    private val resolving = mutableSetOf<Class<*>>()
-    private val scopedInstances = mutableMapOf<Class<*>, ScopedEntry>()
-    private val children = mutableSetOf<Dependencies>()
-    private var closed = false
+    private val bindings = ConcurrentHashMap<Class<*>, Binding<*>>()
+    private val singletons = ConcurrentHashMap<Class<*>, Any>()
+    private val resolving = ThreadLocal.withInitial { mutableSetOf<Class<*>>() }
+    private val constructingSingletons = ThreadLocal.withInitial { mutableSetOf<Class<*>>() }
+    private val scopedInstances = ConcurrentHashMap<Class<*>, ScopedEntry>()
+    private val children = ConcurrentHashMap.newKeySet<Dependencies>()
+    @Volatile private var closed = false
 
     private val isRoot get() = parent == null
 
@@ -66,18 +68,19 @@ internal class Dependencies private constructor(
 
         singletons[type]?.let { return it as T }
 
-        check(resolving.add(type)) {
-            "Circular dependency detected while resolving [${type.simpleName}]. Resolution chain: ${resolving.map { it.simpleName }}"
+        val chain = resolving.get()
+        check(chain.add(type)) {
+            "Circular dependency detected while resolving [${type.simpleName}]. Resolution chain: ${chain.map { it.simpleName }}"
         }
         try {
             val local = bindings[type]
-            if (local != null) return resolveBinding(local, type)
+            if (local != null && type !in constructingSingletons.get()) return resolveBinding(local, type)
 
             parent?.findBinding(type)?.let { return resolveBinding(it, type) }
 
             return autoResolver.resolve(type, this)
         } finally {
-            resolving.remove(type)
+            chain.remove(type)
         }
     }
 
@@ -86,16 +89,20 @@ internal class Dependencies private constructor(
         is Binding.Factory -> binding.factory(this) as T
         is Binding.Singleton -> {
             if (bindings[type] === binding) {
-                singletons[type] as? T ?: run {
-                    // Prevent infinite recursion when a singleton factory calls resolve<T>() for its own type.
-                    bindings.remove(type)
-                    resolving.remove(type)
-                    try {
-                        val instance = binding.factory(this)
-                        singletons[type] = instance
-                        instance as T
-                    } finally {
-                        bindings[type] = binding
+                singletons[type] as? T ?: synchronized(binding) {
+                    singletons[type] as? T ?: run {
+                        // Allow the singleton's factory to resolve its own type via
+                        // parent/auto-resolver instead of recursing into itself.
+                        val constructing = constructingSingletons.get()
+                        constructing.add(type)
+                        resolving.get().remove(type)
+                        try {
+                            val instance = binding.factory(this)
+                            singletons[type] = instance
+                            instance as T
+                        } finally {
+                            constructing.remove(type)
+                        }
                     }
                 }
             } else {
@@ -106,9 +113,11 @@ internal class Dependencies private constructor(
             if (isRoot) throw ScopeRequiredException(
                 "Cannot resolve scoped binding [${type.simpleName}] without an active scope"
             )
-            scopedInstances.getOrPut(type) {
-                ScopedEntry(binding.factory(this), binding)
-            }.instance as T
+            scopedInstances[type]?.instance as? T ?: synchronized(binding) {
+                scopedInstances.getOrPut(type) {
+                    ScopedEntry(binding.factory(this), binding)
+                }.instance as T
+            }
         }
     }
 
